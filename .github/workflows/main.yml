@@ -56,11 +56,16 @@ jobs:
           grep -q '^tags:' "$file" || echo 'tags: {}' >> "$file"
         done
 
-    - name: Run MLflow project
+    - name: Run MLflow project in isolated store
       id: mlflow_run
       run: |
         TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-        mlflow run . --env-manager=local --experiment-name "CI-${TIMESTAMP}"
+        STORE_DIR="mlruns/ci-${TIMESTAMP}"
+        mkdir -p "$STORE_DIR"
+        mlflow run . \
+          --env-manager=local \
+          --experiment-name "CI-${TIMESTAMP}" \
+          --backend-store-uri "file://$(pwd)/$STORE_DIR"
 
     - name: Setup Git LFS
       run: |
