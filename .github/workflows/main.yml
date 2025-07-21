@@ -60,12 +60,16 @@ jobs:
       id: mlflow_run
       run: |
         TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-        STORE_DIR="mlruns/ci-${TIMESTAMP}"
+        STORE_DIR="$PWD/mlruns/ci-$TIMESTAMP"
         mkdir -p "$STORE_DIR"
+    
+        # Tell MLflow to use this directory as its tracking store
+        export MLFLOW_TRACKING_URI="file://$STORE_DIR"
+    
         mlflow run . \
           --env-manager=local \
-          --experiment-name "CI-${TIMESTAMP}" \
-          --backend-store-uri "file://$(pwd)/$STORE_DIR"
+          --experiment-name "CI-$TIMESTAMP"
+
 
     - name: Setup Git LFS
       run: |
