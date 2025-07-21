@@ -1,5 +1,5 @@
 name: CI
- 
+
 on:
   push:
     branches:
@@ -7,56 +7,53 @@ on:
   pull_request:
     branches:
       - main
- 
+
 env:
   CSV_URL: "train_pca.csv"
- 
+
 jobs:
   build:
     runs-on: ubuntu-latest
- 
+
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE
       - uses: actions/checkout@v3
- 
-      # Setup Python 3.12.7
+
+      # Set Git config ONCE at the start (no need to repeat)
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ secrets.username }}"
+          git config --global user.email "${{ secrets.email }}"
+
       - name: Set up Python 3.12.7
         uses: actions/setup-python@v4
         with:
           python-version: "3.12.7"
       
-      # Check Env Variables
       - name: Check Env
-        run: |
-          echo $CSV_URL
+        run: echo $CSV_URL
  
-      # Install mlflow
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install mlflow
       
-      # Run as a mlflow project
       - name: Run mlflow project
-        run: |
-          mlflow run . --env-manager=local 
+        run: mlflow run . --env-manager=local 
 
-      # Install Large File Storage
+      # Git LFS setup (no need for repeated Git config)
       - name: Set up Git LFS
         run: |
-          git config --global user.name $username
-          git config --global user.email $email
           git lfs install
           git lfs track "mlruns/**"
           git add .gitattributes
           git commit -m "Track large files in mlruns with Git LFS" || true
           git push origin main
-          
-       # Save models to GitHub Repository
+         
+      # Save models (no need for repeated Git config)
       - name: Save mlruns to repo
         run: |
-          git config --global user.name $username
-          git config --global user.email $email
           git add -f mlruns/
           git commit -m "Save mlruns from CI run" || true
           git push origin main
+
+          
