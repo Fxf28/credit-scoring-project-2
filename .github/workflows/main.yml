@@ -91,7 +91,7 @@ jobs:
     
     # 10. Google Drive upload (optional)
     - name: Upload to Google Drive
-      if: ${{ secrets.GDRIVE_CREDENTIALS && secrets.GDRIVE_FOLDER_ID }}
+      if: ${{ secrets.GDRIVE_CREDENTIALS }} && ${{ secrets.GDRIVE_FOLDER_ID }}
       env:
         GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
         GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
