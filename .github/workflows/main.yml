@@ -34,13 +34,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.12.7"
-          cache: 'pip'
 
       - name: Verify environment
         run: |
           echo "Dataset URL: $CSV_URL"
           echo "Python version: $(python --version)"
-          echo "Pip version: $(pip --version)"
 
       - name: Install MLflow dependencies
         run: |
