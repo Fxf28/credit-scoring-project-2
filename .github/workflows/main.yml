@@ -13,107 +13,89 @@ env:
   CSV_URL: "train_pca.csv"
 
 jobs:
-  build:
+  build-and-persist:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "${{ secrets.username }}"
-          git config --global user.email "${{ secrets.email }}"
-          git remote set-url origin "https://${{ secrets.username }}:${{ github.token }}@github.com/${{ github.repository }}.git"
-
-      - name: Set up Python 3.12.7
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12.7"
-
-      - name: Verify environment
-        run: |
-          echo "Dataset URL: $CSV_URL"
-          echo "Python version: $(python --version)"
-
-      - name: Install MLflow dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install mlflow numpy pandas scikit-learn
-
-      - name: Clean residual locks
-        run: |
-          find . -name "*.trc" -delete
-          find . -name "mlflow.lock" -delete
-          find . -name "*.meta" -delete
-
-      - name: Run MLflow project with timestamped experiment
-        run: |
-          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-          mlflow run . --env-manager=local --experiment-name "CI-${TIMESTAMP}"
-
-      - name: Install Google Drive dependencies
-        run: |
-          pip install --upgrade \
-            google-auth \
-            google-auth-oauthlib \
-            google-auth-httplib2 \
-            google-api-python-client \
-            pyyaml
-
-      - name: Upload to Google Drive
-        env:
-          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-        run: |
-          echo "$GDRIVE_CREDENTIALS" > service-account.json
-          if python upload_to_gdrive.py; then
-            echo "::notice::Google Drive upload successful!"
-          else
-            echo "::error::Google Drive upload failed"
-            exit 1
-          fi
-
-      - name: Set up Git LFS (only once per repo)
-        if: ${{ !contains(github.event.head_commit.message, 'Track large files') }}
-        run: |
-          sudo apt-get install -y git-lfs
-          git lfs install
-          git lfs track "mlruns/**"
-          git add .gitattributes
-          if [ -n "$(git status --porcelain .gitattributes)" ]; then
-            git pull --rebase origin main
-            git commit -m "Track large files in mlruns with Git LFS"
-            git push origin main
-          else
-            echo "No changes to .gitattributes"
-          fi
-
-      - name: Save new MLflow run artifacts
-        run: |
-          if [ -z "$(ls -A mlruns/)" ]; then
-            echo "::warning::No artifacts found in mlruns/"
-            exit 0
-          fi
-
-          git pull origin main --rebase || true
+    # 1. Checkout code with full history
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    
+    # 2. Configure Git for push
+    - name: Configure Git
+      run: |
+        git config --global user.name "${{ secrets.username }}"
+        git config --global user.email "${{ secrets.email }}"
+        git remote set-url origin "https://${{ secrets.username }}:${{ github.token }}@github.com/${{ github.repository }}.git"
+    
+    # 3. Setup Python
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12.7"
+    
+    # 4. Verify and install MLflow + deps
+    - name: Install dependencies
+      run: |
+        echo "Dataset URL: $CSV_URL"
+        python -m pip install --upgrade pip
+        pip install mlflow numpy pandas scikit-learn
+    
+    # 5. Clean only locks & transient metadata
+    - name: Clean transient files
+      run: |
+        find . -type f -name "*.lock" -delete || true
+        find . -type f -name "*.trc" -delete || true
+    
+    # 6. Sanitize MLflow metadata (fix corrupt tags)
+    - name: Sanitize MLflow metadata
+      run: |
+        find mlruns/ -name "meta.yaml" \
+          -exec sed -i 's/^tags: *"{}"/tags: {}/' {} \; || true
+    
+    # 7. Run MLflow experiment
+    - name: Run MLflow project
+      id: mlflow_run
+      run: |
+        TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+        mlflow run . --env-manager=local --experiment-name "CI-${TIMESTAMP}"
+    
+    # 8. Git LFS: setup & ensure tracking
+    - name: Setup Git LFS
+      run: |
+        sudo apt-get update && sudo apt-get install -y git-lfs
+        git lfs install --local
+        git lfs track "mlruns/**"
+        git add .gitattributes
+        if [ -n "$(git status --porcelain .gitattributes)" ]; then
+          git pull --rebase origin main || true
+          git commit -m "chore: track mlruns/** with Git LFS"
+          git push origin main
+        fi
+    
+    # 9. Persist MLflow artifacts to repo
+    - name: Persist MLflow runs
+      run: |
+        if [ -d mlruns ] && [ "$(ls -A mlruns)" ]; then
+          git pull --rebase origin main || true
           git add -f mlruns/
-          git commit -m "Save mlruns from CI run [$(date +'%Y-%m-%d %H:%M')]"
-
-          n=0
-          until [ "$n" -ge 3 ]
-          do
-            git push origin main && break
-            n=$((n+1))
-            echo "::warning::Push failed, retrying ($n/3)..."
-            sleep 5
-          done
-
-          if [ "$n" -eq 3 ]; then
-            echo "::error::Failed to push artifacts after 3 attempts"
-            exit 1
-          fi
+          git commit -m "feat: save mlruns [$(date +'%Y-%m-%d %H:%M')]" || true
+          git push origin main
+        else
+          echo "::warning::No MLflow runs to persist"
+        fi
+    
+    # 10. Google Drive upload (optional)
+    - name: Upload to Google Drive
+      if: ${{ secrets.GDRIVE_CREDENTIALS && secrets.GDRIVE_FOLDER_ID }}
+      env:
+        GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+        GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      run: |
+        pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client pyyaml
+        echo "$GDRIVE_CREDENTIALS" > service-account.json
+        python upload_to_gdrive.py
