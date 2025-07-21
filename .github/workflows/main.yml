@@ -86,6 +86,7 @@ jobs:
           git lfs track "mlruns/**"
           git add .gitattributes
           if [ -n "$(git status --porcelain .gitattributes)" ]; then
+            git pull --rebase origin main
             git commit -m "Track large files in mlruns with Git LFS"
             git push origin main
           else
