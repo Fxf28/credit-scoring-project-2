@@ -40,7 +40,8 @@ jobs:
       - name: Run mlflow project
         run: |
           mlflow run . --env-manager=local 
- 
+
+      # Install Large File Storage
       - name: Set up Git LFS
         run: |
           git config --global user.name ${{ secrets.USERNAME }}
