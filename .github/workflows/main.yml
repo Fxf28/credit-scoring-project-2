@@ -47,11 +47,11 @@ jobs:
 
     - name: Sanitize MLflow metadata
       run: |
-        # 1) Fix quotes around empty tags
+        # 1) Replace any existing tags: line (even malformed) with a proper empty mapping
         find mlruns/ -name "meta.yaml" \
-          -exec sed -i 's/^tags: *"{}"/tags: {}/' {} \;
+          -exec sed -i 's|^tags:.*|tags: {}|' {} \; || true
 
-        # 2) For any meta.yaml missing 'tags:' line, append it at end
+        # 2) For files that had no tags: entry, append it now
         find mlruns/ -name "meta.yaml" | while read file; do
           grep -q '^tags:' "$file" || echo 'tags: {}' >> "$file"
         done
