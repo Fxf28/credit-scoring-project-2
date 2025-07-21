@@ -1,4 +1,4 @@
-name: CI-latihan
+name: CI
 
 on:
   push:
