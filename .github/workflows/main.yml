@@ -49,7 +49,7 @@ jobs:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}  # Mengambil kredensial dari GitHub Secrets
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}  # Mengambil kredensial dari GitHub Secrets
         run: |
-          python MLproject/upload_to_gdrive.py
+          python upload_to_gdrive.py
 
       # Git LFS setup (no need for repeated Git config)
       - name: Set up Git LFS
