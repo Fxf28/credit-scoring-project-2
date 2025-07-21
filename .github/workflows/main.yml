@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: 
+    paths-ignore:
       - 'mlruns/**'
       - '.gitattributes'
   pull_request:
@@ -18,53 +18,51 @@ jobs:
     timeout-minutes: 30
 
     steps:
-    # 1. Checkout code with full history
+    # 1. Checkout code
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
         persist-credentials: false
-    
-    # 2. Configure Git for push
+
+    # 2. Git identity for commit/push
     - name: Configure Git
       run: |
         git config --global user.name "${{ secrets.username }}"
         git config --global user.email "${{ secrets.email }}"
         git remote set-url origin "https://${{ secrets.username }}:${{ github.token }}@github.com/${{ github.repository }}.git"
-    
-    # 3. Setup Python
+
+    # 3. Python setup
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: "3.12.7"
-    
-    # 4. Verify and install MLflow + deps
+
+    # 4. Install dependencies
     - name: Install dependencies
       run: |
         echo "Dataset URL: $CSV_URL"
-        python -m pip install --upgrade pip
+        pip install --upgrade pip
         pip install mlflow numpy pandas scikit-learn
-    
-    # 5. Clean only locks & transient metadata
+
+    # 5. Clean temporary files
     - name: Clean transient files
       run: |
-        find . -type f -name "*.lock" -delete || true
-        find . -type f -name "*.trc" -delete || true
-    
-    # 6. Sanitize MLflow metadata (fix corrupt tags)
+        find . -type f \( -name "*.lock" -o -name "*.trc" \) -delete || true
+
+    # 6. Fix corrupt MLflow metadata
     - name: Sanitize MLflow metadata
       run: |
-        find mlruns/ -name "meta.yaml" \
-          -exec sed -i 's/^tags: *"{}"/tags: {}/' {} \; || true
-    
-    # 7. Run MLflow experiment
+        find mlruns/ -name "meta.yaml" -exec sed -i 's/^tags: *"{}"/tags: {}/' {} \; || true
+
+    # 7. Run MLflow pipeline
     - name: Run MLflow project
       id: mlflow_run
       run: |
         TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
         mlflow run . --env-manager=local --experiment-name "CI-${TIMESTAMP}"
-    
-    # 8. Git LFS: setup & ensure tracking
+
+    # 8. Enable Git LFS
     - name: Setup Git LFS
       run: |
         sudo apt-get update && sudo apt-get install -y git-lfs
@@ -76,21 +74,25 @@ jobs:
           git commit -m "chore: track mlruns/** with Git LFS"
           git push origin main
         fi
-    
-    # 9. Persist MLflow artifacts to repo
+
+    # 9. Commit & push mlruns safely
     - name: Persist MLflow runs
       run: |
         if [ -d mlruns ] && [ "$(ls -A mlruns)" ]; then
+          git stash --include-untracked
           git pull --rebase origin main || true
+          git stash pop || true
+
           git add -f mlruns/
           git commit -m "feat: save mlruns [$(date +'%Y-%m-%d %H:%M')]" || true
           git push origin main
         else
           echo "::warning::No MLflow runs to persist"
         fi
-    
-    # 10. Google Drive upload (optional)
+
+    # 10. Upload to Google Drive (optional & secure)
     - name: Upload to Google Drive
+      if: env.GDRIVE_CREDENTIALS != '' && env.GDRIVE_FOLDER_ID != ''
       env:
         GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
         GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
