@@ -15,14 +15,14 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Prevent hanging jobs
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Get full history for Git operations
-          persist-credentials: false  # Important for push access
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure Git
         run: |
@@ -34,29 +34,29 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.12.7"
-          cache: 'pip'  # Enable dependency caching
+          cache: 'pip'
 
       - name: Verify environment
         run: |
           echo "Dataset URL: $CSV_URL"
           echo "Python version: $(python --version)"
           echo "Pip version: $(pip --version)"
- 
+
       - name: Install MLflow dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install mlflow numpy pandas scikit-learn  # Add common ML dependencies
+          pip install mlflow numpy pandas scikit-learn
 
-      - name: Clean MLflow artifacts
+      - name: Clean residual locks
         run: |
-          echo "Cleaning previous MLflow artifacts..."
-          rm -rf mlruns
           find . -name "*.trc" -delete
           find . -name "mlflow.lock" -delete
           find . -name "*.meta" -delete
-      
-      - name: Run MLflow project
-        run: mlflow run . --env-manager=local 
+
+      - name: Run MLflow project with timestamped experiment
+        run: |
+          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+          mlflow run . --env-manager=local --experiment-name "CI-${TIMESTAMP}"
 
       - name: Install Google Drive dependencies
         run: |
@@ -72,12 +72,7 @@ jobs:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
-          echo "Starting Google Drive upload..."
-          
-          # Create credentials file
           echo "$GDRIVE_CREDENTIALS" > service-account.json
-          
-          # Run upload script with error handling
           if python upload_to_gdrive.py; then
             echo "::notice::Google Drive upload successful!"
           else
@@ -85,34 +80,31 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Git LFS
+      - name: Set up Git LFS (only once per repo)
+        if: ${{ !contains(github.event.head_commit.message, 'Track large files') }}
         run: |
-          sudo apt-get install -y git-lfs  # Ensure LFS is installed
+          sudo apt-get install -y git-lfs
           git lfs install
           git lfs track "mlruns/**"
           git add .gitattributes
-          
-          # Commit only if there are changes
           if [ -n "$(git status --porcelain .gitattributes)" ]; then
             git commit -m "Track large files in mlruns with Git LFS"
             git push origin main
           else
             echo "No changes to .gitattributes"
           fi
-         
-      - name: Save MLflow artifacts
+
+      - name: Save new MLflow run artifacts
         run: |
-          # Check if mlruns directory has content
           if [ -z "$(ls -A mlruns/)" ]; then
             echo "::warning::No artifacts found in mlruns/"
             exit 0
           fi
-          
-          # Add and commit artifacts
+
+          git pull origin main --rebase || true
           git add -f mlruns/
           git commit -m "Save mlruns from CI run [$(date +'%Y-%m-%d %H:%M')]"
-          
-          # Push with retry logic
+
           n=0
           until [ "$n" -ge 3 ]
           do
@@ -121,7 +113,7 @@ jobs:
             echo "::warning::Push failed, retrying ($n/3)..."
             sleep 5
           done
-          
+
           if [ "$n" -eq 3 ]; then
             echo "::error::Failed to push artifacts after 3 attempts"
             exit 1
