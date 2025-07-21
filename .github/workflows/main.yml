@@ -47,6 +47,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install mlflow numpy pandas scikit-learn  # Add common ML dependencies
 
+      - name: Clean MLflow artifacts
+        run: |
+          echo "Cleaning previous MLflow artifacts..."
+          rm -rf mlruns
+          find . -name "*.trc" -delete
+          find . -name "mlflow.lock" -delete
+          find . -name "*.meta" -delete
+      
       - name: Run MLflow project
         run: mlflow run . --env-manager=local 
 
