@@ -44,8 +44,8 @@ jobs:
       # Install Large File Storage
       - name: Set up Git LFS
         run: |
-          git config user.name "${{ username }}"
-          git config user.email "${{ email }}"
+          git config user.name "${{ secrets.username }}"
+          git config user.email "${{ secrets.email }}"
           git lfs install
           git lfs track "mlruns/"
           git add .gitattributes
@@ -55,8 +55,8 @@ jobs:
        # Save models to GitHub Repository
       - name: Save mlruns to repo
         run: |
-          git config user.name "${{ username }}"
-          git config user.email "${{ email }}"
+          git config user.name "${{ secrets.username }}"
+          git config user.email "${{ secrets.email }}"
           git add -f mlruns/
           git commit -m "Save mlruns from CI run" || true
           git push origin main
